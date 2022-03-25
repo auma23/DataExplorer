@@ -1,0 +1,274 @@
+---
+title: "Data Explorer practice"
+author: "Auma"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+##load package
+```{r}
+
+library(nycflights13)
+
+```
+
+## structure of the data
+```{r}
+library(DataExplorer)
+data_list <- list( airlines, airports, flights, planes, weather)
+plot_str(data_list)
+plot_str(data_list, type = "r")
+
+```
+##merge data together
+```{r}
+merge_airlines<-merge(flights,airlines, by = "carrier", all.x = TRUE)
+merge_planes<-merge(merge_airlines,planes, by = "tailnum" , all.x = TRUE, suffixes = c("_flights","_planes"))
+merge_airports_origin<-merge(merge_planes,airports, by.x = "origin", by.y = "faa", all.x = TRUE, suffixes=c("_carrier","_origin"))
+final_data <- merge(merge_airports_origin, airports, by.x = "dest", by.y = "faa", all.x = TRUE, suffixes = c("_origin", "_dest"))
+
+
+```
+
+
+# Explanatory Data Analysis
+## Explanatory data anlysis is the process of getting to know your data ,so that you can generate and test your hypothesis. Visualization techniques are ussualy aplied
+
+```{r}
+introduce(final_data)
+
+```
+
+##To visualize the introduction
+```{r}
+plot_intro(final_data)
+
+```
+### 0.27% complete rows. This means that only 0.27% of all rows are not completely missing
+### 5.7% missing observation. since we only have 0.27% complete rows, there are only 5.7% missing observations.
+
+## Missing values 
+## missing data can be messy and we can plot_missing function to visualize  missing profile for each feature
+```{r}
+plot_missing(final_data)
+```
+### we notice that speed variable is mostly missing and probably not informative so we drop it.
+
+
+```{r}
+final_data<- drop_columns(final_data, "speed")
+plot_missing(final_data)
+```
+
+## Distributions for all discrete features
+```{r}
+plot_bar(final_data)
+```
+## Duplications 
+##AIRBUS and AIRBUS INDUSTRIE
+##CANADAIR and CANADAIR LTD
+## MCDONNELL DOUGLAS, MCDONNELL DOUGLAS AIRCRAFT CO and MACDONNELL DOUGLAS CORPORATION
+
+## Cleaning dataset to remove duplicates
+```{r}
+final_data[which(final_data$manufacturer == "AIRBUS INDUSTRIE") ,]$manufacturer <- "AIRBUS"
+final_data[which(final_data$manufacturer == "CANADAIR LTD"), ]$manufacturer <- "CANADAIR"
+final_data[which(final_data$manufacturer %in% c("MCDONNEL DOUGLAS AIRCRAFT CO", "MCDONNELL DOUGLAS CORPORATION") ), ]$manufacturer <- "MCDONNELL DOUGLAS"
+plot_bar(final_data$manufacturer)
+```
+ ## we drop dst_origin , tzone_origin , year_flights, tz_origin since they contain only one value
+```{r}
+final_data <- drop_columns(final_data, c("dst_origin", "tzone_origin" , "year_flights", "tz_origin" ) )
+
+```
+
+##frequency is important so we look at a fequency distribution  by arr_delay
+```{r}
+plot_bar(final_data, with = "arr_delay")
+
+```
+##Breaking frequences by by descrete variable 
+```{r}
+plot_bar(final_data, by = "origin")
+
+```
+
+## Histograms
+## we visualize the features of all continous data
+
+```{r}
+plot_histogram(final_data)
+```
+
+## flight is categorical so we can't treat it mathematically
+```{r}
+
+final_data<- update_columns(final_data, "flight", as.factor)
+```
+
+# QQ Plot
+##Quantile-Quantile plot is a way to visualize the deviation from specific probability distribution. after anlyzing these plots, it is often beneficila to apply mathematical transformation like log for models like linear regression. To do so we can plot_qq function. By default, it compares with normal distribution. sampled_rows
+
+```{r}
+qq_data <-  final_data[, c("arr_delay", "air_time", "distance", "seats")]
+plot_qq(qq_data, sampled_rows = 1000L)
+
+```
+## From the chart "air_time","distance" and "seats" seems to be skewed on both tails. Let's apply a simple log transformation and plot again.
+```{r}
+log_qq_data<- update_columns(qq_data, 2:4, function(x) log(x+1))
+plot_qq(log_qq_data[, 2:4], sampled_rows = 1000L)
+```
+
+## ploting another qq plot
+
+```{r}
+qq_data<- final_data[, c("name_origin" , "arr_delay", "air_time", "distance", "seats")]
+plot_qq(qq_data, by = "name_origin", sampled_rows = 1000L)
+
+```
+
+#Correlation Analysis
+## To visualize correlation heatmap for all non_missing values
+
+```{r}
+plot_correlation(na.omit(final_data), maxcat = 2L)
+```
+
+Plotting only discrete or continuous values
+
+```{r}
+plot_correlation(na.omit(final_data), type = "c" ,maxcat = 3L)
+plot_correlation(na.omit(final_data), type = "d" , maxcat = 5L )
+```
+#Principal Component Analysis
+##plot_prcomp(na.omit(final_data)) directly, but PCA works better with cleaner data. To perform and visualize PCA on some selected features
+
+```{r}
+pca_df<- na.omit(final_data[, c("origin","dep_delay","arr_delay","air_time","year_planes", "seats")])
+plot_prcomp(pca_df, variance_cap = 0.9, nrow = 2L, ncol = 2L)
+
+```
+
+#Slicing and Dicing
+##Slicing and dicing data could be useful to your anlysis, and yield insights quickly
+# Box plots
+## Suppose you would like to build a model to predict arival delays, you may visualize the distribution of all continous features based on arrival delays with boxplot.
+
+```{r}
+##Reduce data size for demo purpose
+arr_delay_df<- final_data[, c("arr_delay", "month" , "day","hour", "minute", "dep_delay", "distance", "year_planes", "seats")]
+
+## call box plot function
+plot_boxplot(arr_delay_df, by = "arr_delay")
+
+```
+
+##Scatter plots
+
+```{r}
+arr_delay_df2<- final_data[, c("arr_delay","dep_time", "dep_delay","arr_time", "air_time", "distance", "year_planes" ,"seats")]
+plot_scatterplot(arr_delay_df2, by = "arr_delay" , sampled_rows = 1000L)
+```
+
+#Feature Engineering
+## process of creating new features from existing ones to generate valuable insights 
+##Replacing missing values
+## other than using imputation methods we could also set them to some logical values For example for discrete data we may want to group missing values to a diffrent category and for continous data we may want to set missing values to a known number based on existing knowledge
+## in DataExplorer we use set_missing, the function automatically matches the argument for either discrete or continuous features 
+```{r}
+##Return data.frame
+final_df <- set_missing(final_data, list(0L, "unknown"))
+
+plot_missing(final_df)
+
+```
+
+#Group sparse categories
+##From the bar charts above, we observed a number of discrete features with sparse categorical distributions. Sometimes, we want to group low-frequency categories to a new bucket or reduce the number of categories to a reasonable range. group_category will do the work.
+
+```{r}
+group_category(data = final_data, feature = "manufacturer", threshold = 0.2)
+
+```
+
+```{r}
+final_df<-group_category(data = final_data, feature = "manufacturer", threshold = 0.2, update = TRUE)
+plot_bar(final_df$manufacturer)
+
+```
+
+## Instead of shrinking categories
+
+```{r}
+group_category(data = final_data, feature = "name_carrier", threshold = 0.2, measure = "distance")
+```
+
+```{r}
+final_df<-group_category(data = final_data, feature = "name_carrier", threshold = 0.2,measure = "distance", update = TRUE)
+plot_bar(final_df$name_carrier)
+```
+
+#Dummify data (one hot encoding)
+## To transform the data into binary format (so that ML algorithms can pick it up), dummify will do the job.The function preserves original data structure, so that only eligible discrete features will be turned into binary format.
+
+```{r}
+plot_str(
+  list(
+    "original" = final_data,
+    "dummified" = dummify(final_data, maxcat = 5L)
+    )
+)
+
+```
+
+#Drop Features
+## After viewing the feature distribution, you often want to drop features that are insignificant. For example, features like dst_dest has mostly one value and it doesn't provide any valuable information. You can use drop_columns to quickly drop features. 
+
+```{r}
+identical(
+  drop_columns(final_data, c("dst_dest", "tzone_dest")),
+  drop_columns(final_data, c(36,37))
+)
+
+```
+
+#Update Features
+## we use update_columns to update many features example to set all related columns to discrete
+
+```{r}
+temporal_features <- c("month", "day", "hour", "minute", "tz_dest")
+final_data<- update_columns(final_data, temporal_features, as.factor)
+str(final_data[c("month","day","hour","minute","tz_dest")])
+```
+
+```{r}
+bin_seat<- function(x) cut(x, breaks = c(0L, 50L, 100L, 150L,200L,500L))
+transform_data<-update_columns(final_data, "seats", bin_seat)
+plot_bar(transform_data$seats)
+
+```
+
+#DATA REPORTING
+##To organise all the data profiling statistics into a report, you use the create_report function. It will run most of the EDA functions and output a html file.
+
+```{r}
+create_report(final_data)
+```
+
+```{r}
+create_report(final_data, y = "arr_delay")
+
+```
+
+```{r}
+configure_report(
+  add_plot_str = FALSE,
+  add_plot_qq = FALSE,
+  add_plot_prcomp = FALSE,
+  add_plot_boxplot = FALSE,
+  add_plot_scatterplot = FALSE,
+  global_ggtheme = quote(theme_minimal(base_size = 14))
+)
+
+```
